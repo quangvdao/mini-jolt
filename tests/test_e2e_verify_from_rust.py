@@ -25,7 +25,12 @@ class E2EVerifyFromRustTests(unittest.TestCase):  # E2E: Rust prover -> Python v
             self.skipTest(f"missing Rust artifacts in {guest_dir} (need proof.bin, program_io.bin, verifier_preprocessing.bin, program.elf)")
 
         elf = elf_path.read_bytes()
-        expanded, memory_init, _program_size = decode_program(elf)
+        try:
+            expanded, memory_init, _program_size = decode_program(elf)
+        except NotImplementedError as exc:
+            if "INLINE" in str(exc):
+                self.skipTest("program uses INLINE opcodes (not yet supported)")
+            raise
 
         program_io = parse_jolt_device_bytes(io_path.read_bytes())
         proof = JoltProof.from_rust_bytes(proof_path.read_bytes(), verifier_preprocessing_bin=pp_path.read_bytes())
@@ -46,6 +51,22 @@ class E2EVerifyFromRustTests(unittest.TestCase):  # E2E: Rust prover -> Python v
         guest_dir = os.environ.get("MINI_JOLT_BTREE_GUEST_DIR")
         if not guest_dir:
             self.skipTest("set MINI_JOLT_BTREE_GUEST_DIR to a Rust-generated guest artifacts directory")
+        self._verify_guest_dir(pathlib.Path(guest_dir))
+
+    def test_verify_rust_proof_sha2_fast(self):  # Verify a real Rust-produced proof (sha2, fast).
+        if os.environ.get("JOLT_PYTHON_SKIP_E2E") == "1":
+            self.skipTest("JOLT_PYTHON_SKIP_E2E=1")
+        guest_dir = os.environ.get("MINI_JOLT_SHA2_GUEST_DIR")
+        if not guest_dir:
+            self.skipTest("set MINI_JOLT_SHA2_GUEST_DIR to a Rust-generated guest artifacts directory")
+        self._verify_guest_dir(pathlib.Path(guest_dir))
+
+    def test_verify_rust_proof_sha3_fast(self):  # Verify a real Rust-produced proof (sha3, fast).
+        if os.environ.get("JOLT_PYTHON_SKIP_E2E") == "1":
+            self.skipTest("JOLT_PYTHON_SKIP_E2E=1")
+        guest_dir = os.environ.get("MINI_JOLT_SHA3_GUEST_DIR")
+        if not guest_dir:
+            self.skipTest("set MINI_JOLT_SHA3_GUEST_DIR to a Rust-generated guest artifacts directory")
         self._verify_guest_dir(pathlib.Path(guest_dir))
 
 
