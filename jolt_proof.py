@@ -1,49 +1,7 @@
-"""Jolt proof container (Python-native) + minimal Rust binary deserialization.
+"""Jolt proof container + Rust `proof.bin` deserializer (arkworks CanonicalSerialize compressed).
 
-This module defines:
-
-- A Python-native `JoltProof` dataclass that the Python verifier consumes.
-- A minimal `JoltProof.from_rust_bytes(...)` reader for Rust-produced `proof.bin` (arkworks
-  `CanonicalSerialize` compressed), sufficient to verify Rust proofs in Python.
-
-## Rust canonical fields (source of truth)
-
-Rust struct: `jolt-core/src/zkvm/proof_serialization.rs::JoltProof`.
-
-```text
-opening_claims: Claims<F>                   // map OpeningId -> claim scalar (no opening points)
-commitments: Vec<PCS::Commitment>           // commitments for all main committed polynomials
-stage1_uni_skip_first_round_proof: UniSkipFirstRoundProof
-stage1_sumcheck_proof: SumcheckInstanceProof
-stage2_uni_skip_first_round_proof: UniSkipFirstRoundProof
-stage2_sumcheck_proof: SumcheckInstanceProof
-stage3_sumcheck_proof: SumcheckInstanceProof
-stage4_sumcheck_proof: SumcheckInstanceProof
-stage5_sumcheck_proof: SumcheckInstanceProof
-stage6_sumcheck_proof: SumcheckInstanceProof
-stage7_sumcheck_proof: SumcheckInstanceProof
-joint_opening_proof: PCS::Proof             // Dory joint opening proof (Stage 8)
-untrusted_advice_commitment: Option<PCS::Commitment>
-trace_length: usize
-ram_K: usize
-bytecode_K: usize
-rw_config: ReadWriteConfig
-one_hot_config: OneHotConfig
-dory_layout: DoryLayout
-```
-
-### Commitment ordering (Rust)
-
-`commitments` are ordered by `all_committed_polynomials(one_hot_params)` (see
-`jolt-core/src/zkvm/witness.rs`):
-
-1. `RdInc`
-2. `RamInc`
-3. `InstructionRa(i)` for `i=0..instruction_d-1`
-4. `RamRa(i)` for `i=0..ram_d-1`
-5. `BytecodeRa(i)` for `i=0..bytecode_d-1`
-
-Advice commitments are *not* part of this list; they are appended to the transcript separately.
+See `jolt-core/src/zkvm/proof_serialization.rs` for the Rust struct layout.
+Commitment ordering: RdInc, RamInc, InstructionRa(i), RamRa(i), BytecodeRa(i).
 """
 
 from __future__ import annotations
@@ -489,71 +447,45 @@ def _virtual_poly(i: int) -> VirtualPolynomial:  # Rust VirtualPolynomial::from_
     return VirtualPolynomial[name.replace(".", "_")]
 
 
+_COMMITTED_POLY_TAGS = {  # tag -> (CommittedPolynomial, has_index)
+    0: (CommittedPolynomial.RdInc, False), 1: (CommittedPolynomial.RamInc, False),
+    2: (CommittedPolynomial.InstructionRa, True), 3: (CommittedPolynomial.BytecodeRa, True),
+    4: (CommittedPolynomial.RamRa, True), 5: (CommittedPolynomial.TrustedAdvice, False),
+    6: (CommittedPolynomial.UntrustedAdvice, False),
+}
+
 def _committed_poly(r: _Reader):  # Rust CommittedPolynomial custom encoding in proof_serialization.rs.
     tag = r.u8()
-    if tag == 0:
-        return (CommittedPolynomial.RdInc, None)
-    if tag == 1:
-        return (CommittedPolynomial.RamInc, None)
-    if tag == 2:
-        return (CommittedPolynomial.InstructionRa, int(r.u8()))
-    if tag == 3:
-        return (CommittedPolynomial.BytecodeRa, int(r.u8()))
-    if tag == 4:
-        return (CommittedPolynomial.RamRa, int(r.u8()))
-    if tag == 5:
-        return (CommittedPolynomial.TrustedAdvice, None)
-    if tag == 6:
-        return (CommittedPolynomial.UntrustedAdvice, None)
-    raise RustDeserializeError("bad CommittedPolynomial tag")
+    if tag not in _COMMITTED_POLY_TAGS:
+        raise RustDeserializeError("bad CommittedPolynomial tag")
+    poly, has_idx = _COMMITTED_POLY_TAGS[tag]
+    return (poly, int(r.u8()) if has_idx else None)
 
+
+_CIRCUIT_FLAG_NAMES = ["AddOperands", "SubtractOperands", "MultiplyOperands", "Load", "Store", "Jump",
+    "WriteLookupOutputToRD", "VirtualInstruction", "Assert", "DoNotUpdateUnexpandedPC", "Advice",
+    "IsCompressed", "IsFirstInSequence", "IsLastInSequence"]
+_INSTRUCTION_FLAG_NAMES = ["LeftOperandIsPC", "RightOperandIsImm", "LeftOperandIsRs1Value",
+    "RightOperandIsRs2Value", "Branch", "IsNoop", "IsRdNotZero"]
 
 def _virtual_poly_and_index(r: _Reader):  # Rust VirtualPolynomial encoding in proof_serialization.rs.
     tag = r.u8()
     if tag == 27:
-        i = int(r.u8())
-        return VirtualPolynomial.InstructionRa, i
+        return VirtualPolynomial.InstructionRa, int(r.u8())
     if tag <= 37:
-        name = VIRTUAL_POLYS[tag]
-        return VirtualPolynomial[name.replace(".", "_")], None
+        return VirtualPolynomial[VIRTUAL_POLYS[tag].replace(".", "_")], None
     if tag == 38:
         d = int(r.u8())
-        names = [
-            "AddOperands",
-            "SubtractOperands",
-            "MultiplyOperands",
-            "Load",
-            "Store",
-            "Jump",
-            "WriteLookupOutputToRD",
-            "VirtualInstruction",
-            "Assert",
-            "DoNotUpdateUnexpandedPC",
-            "Advice",
-            "IsCompressed",
-            "IsFirstInSequence",
-            "IsLastInSequence",
-        ]
-        if d < 0 or d >= len(names):
+        if d < 0 or d >= len(_CIRCUIT_FLAG_NAMES):
             raise RustDeserializeError("bad CircuitFlags discriminant")
-        return VirtualPolynomial["OpFlags_" + names[d]], None
+        return VirtualPolynomial["OpFlags_" + _CIRCUIT_FLAG_NAMES[d]], None
     if tag == 39:
         d = int(r.u8())
-        names = [
-            "LeftOperandIsPC",
-            "RightOperandIsImm",
-            "LeftOperandIsRs1Value",
-            "RightOperandIsRs2Value",
-            "Branch",
-            "IsNoop",
-            "IsRdNotZero",
-        ]
-        if d < 0 or d >= len(names):
+        if d < 0 or d >= len(_INSTRUCTION_FLAG_NAMES):
             raise RustDeserializeError("bad InstructionFlags discriminant")
-        return VirtualPolynomial["InstructionFlags_" + names[d]], None
+        return VirtualPolynomial["InstructionFlags_" + _INSTRUCTION_FLAG_NAMES[d]], None
     if tag == 40:
-        i = int(r.u8())
-        return VirtualPolynomial.LookupTableFlag, i
+        return VirtualPolynomial.LookupTableFlag, int(r.u8())
     raise RustDeserializeError("bad VirtualPolynomial tag")
 
 

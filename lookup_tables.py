@@ -13,6 +13,22 @@ def _check_len(r: list[Fr], n: int):  # debug assert on r length
     if len(r) != n:
         raise ValueError(f"expected r of length {n}, got {len(r)}")
 
+def _paired_sum(r, xlen, f):  # Σ_i 2^(xlen-1-i) * f(r[2i], r[2i+1]) — common pattern for bitwise ops.
+    _check_len(r, 2 * xlen)
+    acc = Fr.zero()
+    for i in range(xlen):
+        acc += Fr(1 << (xlen - 1 - i)) * f(r[2 * i], r[2 * i + 1])
+    return acc
+
+def _lt_eq_scan(r, xlen):  # Scan paired bits, return (lt, eq) for unsigned less-than / equality.
+    _check_len(r, 2 * xlen)
+    lt, eq = Fr.zero(), Fr.one()
+    for i in range(xlen):
+        x_i, y_i = r[2 * i], r[2 * i + 1]
+        lt += (Fr.one() - x_i) * y_i * eq
+        eq *= x_i * y_i + (Fr.one() - x_i) * (Fr.one() - y_i)
+    return lt, eq
+
 def evaluate_mle(table: str | None, r: list[Fr], xlen: int = 64) -> Fr:  # JoltLookupTable::evaluate_mle port
     if table is None:
         return Fr.zero()
@@ -30,38 +46,14 @@ def evaluate_mle(table: str | None, r: list[Fr], xlen: int = 64) -> Fr:  # JoltL
             shift = xlen - 1 - i
             acc += Fr(1 << shift) * r[xlen + i]
         return acc
-    if table == "And":  # bitwise AND of two XLEN-bit words (x & y)
-        _check_len(r, 2 * xlen)
-        acc = Fr.zero()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            acc += Fr(1 << (xlen - 1 - i)) * x_i * y_i
-        return acc
+    if table == "And":  # bitwise AND (x & y)
+        return _paired_sum(r, xlen, lambda x, y: x * y)
     if table == "Andn":  # bitwise AND-NOT (x & ~y)
-        _check_len(r, 2 * xlen)
-        acc = Fr.zero()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            acc += Fr(1 << (xlen - 1 - i)) * x_i * (Fr.one() - y_i)
-        return acc
+        return _paired_sum(r, xlen, lambda x, y: x * (Fr.one() - y))
     if table == "Or":  # bitwise OR (x | y)
-        _check_len(r, 2 * xlen)
-        acc = Fr.zero()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            acc += Fr(1 << (xlen - 1 - i)) * (x_i + y_i - x_i * y_i)
-        return acc
+        return _paired_sum(r, xlen, lambda x, y: x + y - x * y)
     if table == "Xor":  # bitwise XOR (x ^ y)
-        _check_len(r, 2 * xlen)
-        acc = Fr.zero()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            acc += Fr(1 << (xlen - 1 - i)) * ((Fr.one() - x_i) * y_i + x_i * (Fr.one() - y_i))
-        return acc
+        return _paired_sum(r, xlen, lambda x, y: (Fr.one() - x) * y + x * (Fr.one() - y))
     if table == "Equal":  # boolean equality predicate EQ(x, y) (product of per-bit equalities)
         if len(r) % 2 != 0:
             raise ValueError("r must have even length")
@@ -73,41 +65,17 @@ def evaluate_mle(table: str | None, r: list[Fr], xlen: int = 64) -> Fr:  # JoltL
         return acc
     if table == "NotEqual":  # boolean inequality predicate NEQ(x, y) = 1 - EQ(x, y)
         return Fr.one() - evaluate_mle("Equal", r, xlen=xlen)
-    if table == "UnsignedLessThan":  # boolean unsigned less-than predicate LTU(x, y)
-        _check_len(r, 2 * xlen)
-        lt = Fr.zero()
-        eq = Fr.one()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            lt += (Fr.one() - x_i) * y_i * eq
-            eq *= x_i * y_i + (Fr.one() - x_i) * (Fr.one() - y_i)
-        return lt
-    if table == "SignedLessThan":  # boolean signed less-than predicate LTS(x, y) (two's-complement via sign-bit adjustment)
-        _check_len(r, 2 * xlen)
-        x_sign = r[0]
-        y_sign = r[1]
-        lt = Fr.zero()
-        eq = Fr.one()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            lt += (Fr.one() - x_i) * y_i * eq
-            eq *= x_i * y_i + (Fr.one() - x_i) * (Fr.one() - y_i)
-        return x_sign - y_sign + lt
+    if table == "UnsignedLessThan":  # boolean unsigned less-than LTU(x, y)
+        return _lt_eq_scan(r, xlen)[0]
+    if table == "SignedLessThan":  # boolean signed less-than LTS(x, y) (sign-bit adjustment)
+        lt, _ = _lt_eq_scan(r, xlen)
+        return r[0] - r[1] + lt
     if table == "UnsignedGreaterThanEqual":  # boolean unsigned greater-or-equal predicate GTEU(x, y) = 1 - LTU(x, y)
         return Fr.one() - evaluate_mle("UnsignedLessThan", r, xlen=xlen)
     if table == "SignedGreaterThanEqual":  # boolean signed greater-or-equal predicate GTES(x, y) = 1 - LTS(x, y)
         return Fr.one() - evaluate_mle("SignedLessThan", r, xlen=xlen)
-    if table == "LessThanEqual":  # boolean unsigned less-or-equal predicate LTEU(x, y) = LTU(x, y) + EQ(x, y)
-        _check_len(r, 2 * xlen)
-        lt = Fr.zero()
-        eq = Fr.one()
-        for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            lt += (Fr.one() - x_i) * y_i * eq
-            eq *= x_i * y_i + (Fr.one() - x_i) * (Fr.one() - y_i)
+    if table == "LessThanEqual":  # boolean unsigned less-or-equal LTEU(x, y) = LTU + EQ
+        lt, eq = _lt_eq_scan(r, xlen)
         return lt + eq
     if table == "Movsign":  # sign-mask helper: output is 0 if sign=0 else (2^XLEN - 1) (all ones)
         _check_len(r, 2 * xlen)
@@ -129,17 +97,12 @@ def evaluate_mle(table: str | None, r: list[Fr], xlen: int = 64) -> Fr:  # JoltL
             divisor_is_zero *= Fr.one() - x_i
             is_valid_div_by_zero *= (Fr.one() - x_i) * y_i
         return Fr.one() - divisor_is_zero + is_valid_div_by_zero
-    if table == "ValidUnsignedRemainder":  # REMU validity: divisor==0 OR (remainder < divisor) (unsigned)
+    if table == "ValidUnsignedRemainder":  # REMU validity: divisor==0 OR (remainder < divisor)
         _check_len(r, 2 * xlen)
+        lt, _ = _lt_eq_scan(r, xlen)
         divisor_is_zero = Fr.one()
-        lt = Fr.zero()
-        eq = Fr.one()
         for i in range(xlen):
-            x_i = r[2 * i]
-            y_i = r[2 * i + 1]
-            divisor_is_zero *= Fr.one() - y_i
-            lt += (Fr.one() - x_i) * y_i * eq
-            eq *= x_i * y_i + (Fr.one() - x_i) * (Fr.one() - y_i)
+            divisor_is_zero *= Fr.one() - r[2 * i + 1]
         return lt + divisor_is_zero
     if table == "ValidSignedRemainder":  # REM validity: divisor==0 OR remainder==0 OR (|rem|<|div| and sign(rem)==sign(div))
         _check_len(r, 2 * xlen)
