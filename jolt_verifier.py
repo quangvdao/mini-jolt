@@ -10,41 +10,19 @@ from zkvm_types import JoltDevice, OneHotParams  # public inputs + one-hot param
 import dory  # Stage8 Dory joint opening verification
 from jolt_preprocessing import JoltPreprocessing  # explicit verifier preprocessing
 from jolt_proof import JoltProof  # canonical proof container
-from sumchecks import (  # sumcheck proof containers + instance verifiers
-    AdviceClaimReductionVerifier,
-    BatchedSumcheck,
-    BooleanitySumcheckVerifier,
-    BytecodeReadRafSumcheckVerifier,
-    HammingBooleanitySumcheckVerifier,
-    HammingWeightClaimReductionSumcheckVerifier,
-    IncClaimReductionSumcheckVerifier,
-    InstructionInputSumcheckVerifier,
-    InstructionLookupsClaimReductionSumcheckVerifier,
-    InstructionRaVirtualSumcheckVerifier,
-    InstructionReadRafSumcheckVerifier,
-    OUTER_FIRST_ROUND_POLY_NUM_COEFFS,
-    OUTER_UNIVARIATE_SKIP_DOMAIN_SIZE,
-    OutputSumcheckVerifier,
-    PRODUCT_VIRTUAL_FIRST_ROUND_POLY_NUM_COEFFS,
-    PRODUCT_VIRTUAL_UNIVARIATE_SKIP_DOMAIN_SIZE,
-    ProductVirtualRemainderVerifier,
-    ProductVirtualUniSkipVerifier,
-    RamRaClaimReductionSumcheckVerifier,
-    RamRaVirtualSumcheckVerifier,
-    RamRafEvaluationSumcheckVerifier,
-    RamReadWriteCheckingVerifier,
-    RamValEvaluationSumcheckVerifier,
-    RegistersClaimReductionSumcheckVerifier,
-    RegistersReadWriteCheckingVerifier,
-    RegistersValEvaluationSumcheckVerifier,
-    ShiftSumcheckVerifier,
-    SpartanOuterRemainingSumcheckVerifier,
-    SpartanOuterUniSkipVerifier,
-    SumcheckInstanceProof,
-    UniSkipFirstRoundProof,
-    ValFinalSumcheckVerifier,
-    verifier_accumulate_advice,
-)  # Stage functions are implemented in this file.
+from r1cs import OUTER_FIRST_ROUND_POLY_NUM_COEFFS, OUTER_UNIVARIATE_SKIP_DOMAIN_SIZE  # Spartan outer constants
+from ram_io import verifier_accumulate_advice  # advice accumulation helper
+from sumchecks import BatchedSumcheck, SumcheckInstanceProof, UniSkipFirstRoundProof  # core proof containers
+from stages.stage1 import SpartanOuterRemainingSumcheckVerifier, SpartanOuterUniSkipVerifier
+from stages.stage2 import (PRODUCT_VIRTUAL_FIRST_ROUND_POLY_NUM_COEFFS, PRODUCT_VIRTUAL_UNIVARIATE_SKIP_DOMAIN_SIZE,
+    ProductVirtualUniSkipVerifier, ProductVirtualRemainderVerifier, InstructionLookupsClaimReductionSumcheckVerifier,
+    RamRafEvaluationSumcheckVerifier, OutputSumcheckVerifier, RamReadWriteCheckingVerifier)
+from stages.stage3 import ShiftSumcheckVerifier, InstructionInputSumcheckVerifier, RegistersClaimReductionSumcheckVerifier
+from stages.stage4 import RegistersReadWriteCheckingVerifier, RamValEvaluationSumcheckVerifier, ValFinalSumcheckVerifier
+from stages.stage5 import InstructionReadRafSumcheckVerifier, RamRaClaimReductionSumcheckVerifier, RegistersValEvaluationSumcheckVerifier
+from stages.stage6 import (HammingBooleanitySumcheckVerifier, RamRaVirtualSumcheckVerifier, InstructionRaVirtualSumcheckVerifier,
+    IncClaimReductionSumcheckVerifier, AdviceClaimReductionVerifier, BooleanitySumcheckVerifier, BytecodeReadRafSumcheckVerifier)
+from stages.stage7 import HammingWeightClaimReductionSumcheckVerifier
 
 
 class JoltVerifyError(Exception):  # Raised on top-level Jolt verification failure.

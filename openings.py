@@ -168,3 +168,10 @@ class VerifierOpeningAccumulator:  # Verifier-side opening accumulator (typed ke
 
     def append_trusted_advice(self, transcript, sumcheck_id, opening_point):  # Back-compat: append trusted advice opening.
         self.append(transcript, _opening_advice(sumcheck_id, AdviceKind.Trusted), opening_point)
+
+    # Short aliases for concise stage verifier code.
+    vp = get_virtual_polynomial_opening
+    vpi = get_virtual_polynomial_opening_i
+    cp = get_committed_polynomial_opening
+    cpi = get_committed_polynomial_opening_i
+    adv = get_advice_opening
