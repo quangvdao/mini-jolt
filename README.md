@@ -2,7 +2,7 @@
 
 A **pure-Python**, minimal-dependency **Jolt verifier** for **RV64IMAC**.
 
-This repo is intentionally “spec-like”: it prioritizes readability and Rust parity over performance. As of the current tree, the repo is ~**10.7k LoC** total (see `wc -l`), with the largest single module being `sumchecks.py` (~2k LoC).
+This repo is intentionally “spec-like”: it prioritizes readability and Rust parity over performance. As of the current tree, the verifier is ~**6.4k LoC** (excluding tests and scripts), with the largest module being `rv64imac/inline_sequences.py` (~910 LoC).
 
 ## Philosophy
 
@@ -90,7 +90,7 @@ mini-jolt/
   - Blake2b transcript (`transcript.py`)
   - Lookup-table MLEs (`lookup_tables.py`)
   - Verifier-side polynomial helpers (`polynomials.py`)
-  - Staged verification pipeline for Stages **1–7** (`sumchecks.py` + orchestration in `jolt_verifier.py`)
+  - Staged verification pipeline for Stages **1–7** (`stages/` + orchestration in `jolt_verifier.py`)
   - Stage **8** Dory PCS joint-opening verification (`dory.py` + Stage-8 glue in `jolt_verifier.py`)
   - Rust proof parsing for `proof.bin` (arkworks `CanonicalSerialize`-style compressed) (`jolt_proof.py`)
 - **Notable limitations / WIP**:
