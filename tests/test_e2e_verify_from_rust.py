@@ -11,6 +11,7 @@ from jolt_verifier import verify_jolt  # end-to-end verifier entrypoint
 from jolt_proof import JoltProof  # Rust `proof.bin` parsing + verifier-facing proof object
 from rust_device_deserialize import parse_jolt_device_bytes  # Rust `program_io.bin` parsing (test-only)
 from rv64imac.program import decode_program  # ELF -> expanded bytecode + memory init
+from e2e_artifacts import ensure_guest_dir  # centralized artifact lookup
 
 
 class E2EVerifyFromRustTests(unittest.TestCase):  # E2E: Rust prover -> Python verifier.
@@ -40,34 +41,26 @@ class E2EVerifyFromRustTests(unittest.TestCase):  # E2E: Rust prover -> Python v
     def test_verify_rust_proof_fib_fast(self):  # Verify a real Rust-produced proof (fib, fast).
         if os.environ.get("JOLT_PYTHON_SKIP_E2E") == "1":
             self.skipTest("JOLT_PYTHON_SKIP_E2E=1")
-        guest_dir = os.environ.get("MINI_JOLT_FIB_GUEST_DIR")
-        if not guest_dir:
-            self.skipTest("set MINI_JOLT_FIB_GUEST_DIR to a Rust-generated guest artifacts directory")
-        self._verify_guest_dir(pathlib.Path(guest_dir))
+        guest_dir = ensure_guest_dir("fib", fast=True)
+        self._verify_guest_dir(guest_dir)
 
     def test_verify_rust_proof_btreemap_fast(self):  # Verify a real Rust-produced proof (btreemap, fast).
         if os.environ.get("JOLT_PYTHON_SKIP_E2E") == "1":
             self.skipTest("JOLT_PYTHON_SKIP_E2E=1")
-        guest_dir = os.environ.get("MINI_JOLT_BTREE_GUEST_DIR")
-        if not guest_dir:
-            self.skipTest("set MINI_JOLT_BTREE_GUEST_DIR to a Rust-generated guest artifacts directory")
-        self._verify_guest_dir(pathlib.Path(guest_dir))
+        guest_dir = ensure_guest_dir("btreemap", fast=True)
+        self._verify_guest_dir(guest_dir)
 
     def test_verify_rust_proof_sha2_fast(self):  # Verify a real Rust-produced proof (sha2, fast).
         if os.environ.get("JOLT_PYTHON_SKIP_E2E") == "1":
             self.skipTest("JOLT_PYTHON_SKIP_E2E=1")
-        guest_dir = os.environ.get("MINI_JOLT_SHA2_GUEST_DIR")
-        if not guest_dir:
-            self.skipTest("set MINI_JOLT_SHA2_GUEST_DIR to a Rust-generated guest artifacts directory")
-        self._verify_guest_dir(pathlib.Path(guest_dir))
+        guest_dir = ensure_guest_dir("sha2", fast=True)
+        self._verify_guest_dir(guest_dir)
 
     def test_verify_rust_proof_sha3_fast(self):  # Verify a real Rust-produced proof (sha3, fast).
         if os.environ.get("JOLT_PYTHON_SKIP_E2E") == "1":
             self.skipTest("JOLT_PYTHON_SKIP_E2E=1")
-        guest_dir = os.environ.get("MINI_JOLT_SHA3_GUEST_DIR")
-        if not guest_dir:
-            self.skipTest("set MINI_JOLT_SHA3_GUEST_DIR to a Rust-generated guest artifacts directory")
-        self._verify_guest_dir(pathlib.Path(guest_dir))
+        guest_dir = ensure_guest_dir("sha3", fast=True)
+        self._verify_guest_dir(guest_dir)
 
 
 if __name__ == "__main__":
