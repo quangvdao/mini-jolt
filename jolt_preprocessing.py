@@ -5,7 +5,8 @@ from dataclasses import dataclass  # lightweight preprocessing container
 from rv64imac.bytecode import BytecodePreprocessing  # bytecode padding + PC mapping
 from zkvm_types import RAMPreprocessing  # verifier-facing RAM preprocessing type
 
-_DEBUG_LOG_PATH = "/Users/quang.dao/Documents/SNARKs/jolt-python/.cursor/debug.log"  # debug-mode NDJSON sink
+import pathlib as _pathlib  # resolve debug log path relative to repo root
+_DEBUG_LOG_PATH = str(_pathlib.Path(__file__).resolve().parent / ".cursor" / "debug.log")  # debug-mode NDJSON sink
 BYTES_PER_INSTRUCTION = 4  # Rust common::constants::BYTES_PER_INSTRUCTION
 
 

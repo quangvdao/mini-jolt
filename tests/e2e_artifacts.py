@@ -51,7 +51,7 @@ def ensure_guest_dir(program: str, *, fast: bool = True) -> pathlib.Path:
     cargo_cmd = (
         f"cargo run --manifest-path {manifest}"
         f" --features e2e"
-        f" -- --program {program}{fast_flag}"
+        f" -- e2e_verify --program {program}{fast_flag}"
         f" --out-dir {cache_dir}"
     )
     raise unittest.SkipTest(
