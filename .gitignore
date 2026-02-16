@@ -12,5 +12,8 @@ build/
 dist/
 *.egg-info/
 
+# Cursor IDE runtime artifacts
+.cursor/
+
 # Rust build artifacts (optional tooling/tests)
 target/
