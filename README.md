@@ -46,7 +46,16 @@ mini-jolt/
 ├── openings.py               # typed opening IDs + verifier-side opening accumulator
 ├── r1cs.py                   # Spartan outer (uniform R1CS) constants + key evaluation
 ├── ram_io.py                 # RAM/IO MLE helpers (I/O blocks, initial RAM, advice scaling)
-├── sumchecks.py              # Stage 1–7 verifier instances + batched sumcheck template (largest file)
+├── sumchecks.py              # batched sumcheck template + base verifier classes (re-exports stages/)
+├── stages/                   # per-stage sumcheck verifier classes (extracted from sumchecks.py)
+│   ├── __init__.py           # re-exports all stage verifier classes
+│   ├── stage1.py             # Stage 1: Spartan outer
+│   ├── stage2.py             # Stage 2: product virtualization + RAM/instruction checks
+│   ├── stage3.py             # Stage 3: shift + instruction input + registers claim
+│   ├── stage4.py             # Stage 4: registers RW + RAM val + val final
+│   ├── stage5.py             # Stage 5: instruction RAF + RAM RA + registers val
+│   ├── stage6.py             # Stage 6: bytecode RAF + booleanity + RA virtual + advice
+│   └── stage7.py             # Stage 7: Hamming weight claim reduction
 ├── dory.py                   # Dory PCS verification + RLC joint-opening combine
 ├── jolt_preprocessing.py     # verifier preprocessing (RAM word packing + bytecode preprocessing wrapper)
 ├── jolt_proof.py             # `JoltProof` container + Rust `proof.bin` deserializer (+ Dory verifier setup parsing)
@@ -155,6 +164,49 @@ You can skip E2E with:
 ```bash
 export JOLT_PYTHON_SKIP_E2E=1
 ```
+
+## Generating and running E2E tests
+
+### Building the Rust oracle
+
+```bash
+cargo build --quiet --manifest-path tests/rust_oracle/Cargo.toml
+```
+
+### Generating e2e artifacts
+
+The `rust_oracle` binary (with `--features e2e`) can generate the four artifact files needed by the Python E2E tests:
+
+```bash
+cargo run --manifest-path tests/rust_oracle/Cargo.toml --features e2e \
+  -- e2e_verify --program fib --fast --out-dir target/jolt_python_e2e/fib_fast
+```
+
+Replace `fib` with `btreemap`, `sha2`, `sha3`, or `sha2-chain` as needed.
+
+> **Workspace-root caveat:** The `e2e_verify` command builds Jolt guest programs, which requires a Cargo workspace that includes the pinned `a16z/jolt` guest crates. In practice this means running from the Jolt checkout in Cargo's git cache, or setting up a workspace that includes both the oracle and the Jolt guest crates.
+
+### Running e2e tests
+
+Point the test at the generated artifact directory:
+
+```bash
+MINI_JOLT_FIB_GUEST_DIR=target/jolt_python_e2e/fib_fast \
+  python3 -m unittest tests.test_e2e_verify_from_rust -q
+```
+
+If the artifact directory is missing, the tests will skip with an actionable message showing the exact `cargo run` command to generate them.
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `MINI_JOLT_RUST_ORACLE_MANIFEST` | Path to `rust_oracle/Cargo.toml` (default: `tests/rust_oracle/Cargo.toml`) |
+| `MINI_JOLT_FIB_GUEST_DIR` | Directory with fib guest artifacts |
+| `MINI_JOLT_BTREE_GUEST_DIR` | Directory with btreemap guest artifacts |
+| `MINI_JOLT_SHA2_GUEST_DIR` | Directory with sha2 guest artifacts |
+| `MINI_JOLT_SHA3_GUEST_DIR` | Directory with sha3 guest artifacts |
+| `JOLT_PYTHON_SKIP_E2E` | Set to `1` to skip all e2e tests |
 
 ## Developer notes (WIP conventions)
 
