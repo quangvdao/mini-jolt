@@ -271,7 +271,21 @@ class RV64IMACInlineSequenceTests(unittest.TestCase):  # freeze key expansions f
         scd = decode_instruction(_amo_word(0b011, 0b00011, rd, rs1, rs2), addr, False)
 
         alloc = VirtualRegisterAllocator()
-        self.assertEqual([i.kind for i in inline_sequence(lrw, alloc, Xlen.Bit64)], ["ADDI", "ADDI", "LW"])
+        self.assertEqual(
+            [i.kind for i in inline_sequence(lrw, alloc, Xlen.Bit64)],
+            [
+                "ADDI",
+                "ADDI",
+                "VirtualAssertWordAlignment",
+                "ADDI",
+                "ANDI",
+                "LD",
+                "VirtualMULI",
+                "VirtualShiftRightBitmask",
+                "VirtualSRL",
+                "VirtualSignExtendWord",
+            ],
+        )
         self.assertEqual(
             [i.kind for i in inline_sequence(scw, VirtualRegisterAllocator(), Xlen.Bit64)],
             [
@@ -282,12 +296,20 @@ class RV64IMACInlineSequenceTests(unittest.TestCase):  # freeze key expansions f
                 "MUL",
                 "VirtualAssertEQ",
                 "ADDI",
-                "LW",
+                "VirtualAssertWordAlignment",
+                "ADDI",
+                "ANDI",
+                "LD",
+                "VirtualMULI",
+                "VirtualShiftRightBitmask",
+                "VirtualSRL",
+                "VirtualSignExtendWord",
                 "SUB",
                 "MUL",
                 "ADD",
                 "ADDI",
-                "SW",
+                "VirtualAssertWordAlignment",
+                "VirtualSW",
                 "XORI",
                 "ADDI",
                 "ADDI",

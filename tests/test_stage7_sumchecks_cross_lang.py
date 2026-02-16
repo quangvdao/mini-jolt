@@ -10,6 +10,7 @@ from openings import CommittedPolynomial, SumcheckId, VerifierOpeningAccumulator
 from polynomials import CompressedUniPoly, UniPoly
 from r1cs import ALL_R1CS_INPUTS, UniformSpartanKey
 from rv64imac.bytecode import BytecodePreprocessing
+from rv64imac.constants import REGISTER_COUNT
 from jolt_verifier import verify_spartan_outer_stage1, verify_stage2, verify_stage3, verify_stage4, verify_stage5, verify_stage6, verify_stage7
 from sumchecks import SumcheckInstanceProof, UniSkipFirstRoundProof
 from tests.oracle import run_rust_oracle
@@ -197,7 +198,7 @@ class Stage7SumchecksCrossLangTests(unittest.TestCase):
         acc.set_committed_claim(CommittedPolynomial.RamInc, SumcheckId.RamValFinalEvaluation, Fr(int(kv["stage4_val_final_inc_claim"])))
         acc.set_virtual_claim(VirtualPolynomial.RamRa, SumcheckId.RamValFinalEvaluation, Fr(int(kv["stage4_val_final_wa_claim"])))
 
-        stage4_num_rounds = 5 + (trace_len.bit_length() - 1)
+        stage4_num_rounds = (REGISTER_COUNT.bit_length() - 1) + (trace_len.bit_length() - 1)
         stage4_polys = [CompressedUniPoly(_csv_fr(kv[f"stage4_sumcheck_poly_{j}"])) for j in range(stage4_num_rounds)]
         _ = verify_stage4(SumcheckInstanceProof(stage4_polys), trace_len, one_hot_params, rw_config, ram_preprocessing, program_io, has_untrusted, has_trusted, acc, t)
 

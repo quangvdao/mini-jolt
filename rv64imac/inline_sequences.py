@@ -151,7 +151,10 @@ def _expand_scw(inst: Instruction, allocator: VirtualRegisterAllocator, xlen: Xl
             asm.emit_i("XORI", inst.operands.rd, v_success, 1)
         else:
             asm.mov(v_reservation_d, v_diff)
-            asm.emit_s("SW", inst.operands.rs1, v_reservation_d, 0)
+            # Avoid recursive SW expansion (which needs extra temp regs).
+            # `VirtualSW` matches Rust tracer shape here and keeps SCW expansion within the small temp-reg budget.
+            asm.emit_align("VirtualAssertWordAlignment", inst.operands.rs1, 0)
+            asm.emit_s("VirtualSW", inst.operands.rs1, v_reservation_d, 0)
             asm.emit_i("XORI", inst.operands.rd, v_reservation, 1)
             asm.mov(v_reservation, 0)
             asm.mov(v_reservation_d, 0)

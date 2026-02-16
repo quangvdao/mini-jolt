@@ -723,7 +723,7 @@ class RegistersClaimReductionSumcheckVerifier(SumcheckInstanceVerifier):  # Stag
 
 class RegistersReadWriteCheckingVerifier(SumcheckInstanceVerifier):  # Stage 4: registers read/write checking.
     DEGREE_BOUND = 3
-    LOG_K = int(REGISTER_COUNT).bit_length() - 1  # Rust: log2(REGISTER_COUNT)=7 for Jolt (128 regs)
+    LOG_K = int(REGISTER_COUNT).bit_length() - 1  # Rust: log2(REGISTER_COUNT)=7 (128 regs)
 
     def __init__(self, trace_len, opening_accumulator, transcript, rw_config):
         self.gamma = transcript.challenge_scalar()
@@ -1127,7 +1127,7 @@ class RamRaClaimReductionSumcheckVerifier(SumcheckInstanceVerifier):  # Stage 5:
 
 class RegistersValEvaluationSumcheckVerifier(SumcheckInstanceVerifier):  # Stage 5: registers val evaluation.
     DEGREE_BOUND = 3
-    LOG_K = int(REGISTER_COUNT).bit_length() - 1  # Rust: log2(REGISTER_COUNT)=7 for Jolt (128 regs)
+    LOG_K = int(REGISTER_COUNT).bit_length() - 1  # Rust: log2(REGISTER_COUNT)=7 (128 regs)
 
     def __init__(self, opening_accumulator):  # Extract r_address||r_cycle from RegistersVal opening.
         r_full = opening_accumulator.get_virtual_polynomial_opening(

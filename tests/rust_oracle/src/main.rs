@@ -12,6 +12,7 @@ use dory_pcs::primitives::serialization::DorySerialize;
 use dory_pcs::primitives::transcript::Transcript as DoryTranscript;
 use dory_pcs::setup::{ProverSetup as DoryProverSetup, VerifierSetup as DoryVerifierSetup};
 use dory_pcs::Polynomial;
+use jolt_core::field::challenge::MontU128Challenge;
 use jolt_core::zkvm::lookup_table::LookupTables;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
@@ -539,6 +540,15 @@ impl Blake2bTranscript {
         u128::from_be_bytes(b.try_into().unwrap())
     }
 
+    fn challenge_scalar_optimized_fr(&mut self) -> Fr {
+        // Match Jolt's optimized challenge path (see `jolt_core::transcripts`):
+        // `challenge_u128()` (little-endian interpretation) → MontU128Challenge<Fr> (mask top 3 bits)
+        // → convert into `Fr` via arkworks BigInt([0, 0, low, high]) representation.
+        let u = self.challenge_u128();
+        let ch: MontU128Challenge<Fr> = MontU128Challenge::from(u);
+        ch.into()
+    }
+
     fn challenge_scalar_fr(&mut self) -> Fr {
         let b = self.challenge_bytes(16);
         let x = u128::from_be_bytes(b.try_into().unwrap());
@@ -843,8 +853,7 @@ fn run_sumcheck_verify_blake2b(input: &str) {
                         panic!("degree bound exceeded");
                     }
                     t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-                    let r_u128 = t.challenge_u128(); // optimized challenge uses u128 (little-endian interpretation)
-                    let r_i = Fr::from(r_u128);
+                    let r_i = t.challenge_scalar_optimized_fr();
                     e = poly.eval_from_hint(e, r_i);
                     println!("round={i} r={r_i} e={e} state={}", bytes_to_hex(&t.state));
                 }
@@ -1109,14 +1118,13 @@ fn run_spartan_outer_stage1_blake2b() {
     // tau := challenge_vector_optimized(num_rows_bits)
     let mut tau: Vec<Fr> = Vec::with_capacity(num_rows_bits);
     for _ in 0..num_rows_bits {
-        let u = t.challenge_u128();
-        tau.push(Fr::from(u));
+        tau.push(t.challenge_scalar_optimized_fr());
     }
 
     // Uni-skip polynomial: all zeros (degree <= bound, sum over base domain = 0).
     let uni_poly_coeffs: Vec<Fr> = vec![Fr::zero(); first_round_num_coeffs];
     t.append_scalars_fr(b"uniskip_poly", &uni_poly_coeffs);
-    let r0 = Fr::from(t.challenge_u128());
+    let r0 = t.challenge_scalar_optimized_fr();
 
     // UnivariateSkip opening claim (seeded externally in real proofs). Keep 0 for simplicity.
     let uniskip_claim = Fr::zero();
@@ -1139,7 +1147,7 @@ fn run_spartan_outer_stage1_blake2b() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e = poly.eval_from_hint(e, rj);
         polys.push(poly);
         r_sumcheck.push(rj);
@@ -1347,12 +1355,12 @@ fn run_stage2_sumchecks_blake2b() {
     // ----------------
     let mut tau: Vec<Fr> = Vec::with_capacity(num_rows_bits);
     for _ in 0..num_rows_bits {
-        tau.push(Fr::from(t.challenge_u128()));
+        tau.push(t.challenge_scalar_optimized_fr());
     }
 
     let stage1_uni_poly_coeffs: Vec<Fr> = vec![Fr::zero(); outer_first_round_num_coeffs];
     t.append_scalars_fr(b"uniskip_poly", &stage1_uni_poly_coeffs);
-    let stage1_r0 = Fr::from(t.challenge_u128());
+    let stage1_r0 = t.challenge_scalar_optimized_fr();
 
     let stage1_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage1_uniskip_claim);
@@ -1372,7 +1380,7 @@ fn run_stage2_sumchecks_blake2b() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e = poly.eval_from_hint(e, rj);
         stage1_polys.push(poly);
         stage1_r_sumcheck.push(rj);
@@ -1530,7 +1538,7 @@ fn run_stage2_sumchecks_blake2b() {
         r1cs_inputs[5],
         r1cs_inputs[22],
     ];
-    let tau_high_pv = Fr::from(t.challenge_u128());
+    let tau_high_pv = t.challenge_scalar_optimized_fr();
     let w_tau = lagrange_evals_symmetric(tau_high_pv, 5);
     let mut pv_input_claim = Fr::zero();
     for k in 0..5 {
@@ -1541,7 +1549,7 @@ fn run_stage2_sumchecks_blake2b() {
     let mut stage2_uniskip_poly_coeffs = vec![Fr::zero(); 13];
     stage2_uniskip_poly_coeffs[0] = c0;
     t.append_scalars_fr(b"uniskip_poly", &stage2_uniskip_poly_coeffs);
-    let stage2_r0 = Fr::from(t.challenge_u128());
+    let stage2_r0 = t.challenge_scalar_optimized_fr();
 
     let stage2_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage2_uniskip_claim);
@@ -1554,7 +1562,7 @@ fn run_stage2_sumchecks_blake2b() {
     let gamma_instr_sqr = gamma_instr.square();
     let mut stage2_r_address: Vec<Fr> = Vec::with_capacity(log_k);
     for _ in 0..log_k {
-        stage2_r_address.push(Fr::from(t.challenge_u128()));
+        stage2_r_address.push(t.challenge_scalar_optimized_fr());
     }
 
     let get = |idx: usize| r1cs_inputs[idx];
@@ -1590,7 +1598,7 @@ fn run_stage2_sumchecks_blake2b() {
         let c3 = Fr::from((6000 + j) as u64);
         let poly = CompressedUniPolyFr { coeffs_except_linear_term: vec![c0, c2, c3] };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e2 = poly.eval_from_hint(e2, rj);
         stage2_polys.push(poly);
         stage2_r_sumcheck.push(rj);
@@ -1762,12 +1770,12 @@ fn run_stage3_sumchecks_blake2b() {
     // ----------------
     let mut tau: Vec<Fr> = Vec::with_capacity(num_rows_bits);
     for _ in 0..num_rows_bits {
-        tau.push(Fr::from(t.challenge_u128()));
+        tau.push(t.challenge_scalar_optimized_fr());
     }
 
     let stage1_uni_poly_coeffs: Vec<Fr> = vec![Fr::zero(); outer_first_round_num_coeffs];
     t.append_scalars_fr(b"uniskip_poly", &stage1_uni_poly_coeffs);
-    let stage1_r0 = Fr::from(t.challenge_u128());
+    let stage1_r0 = t.challenge_scalar_optimized_fr();
 
     let stage1_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage1_uniskip_claim);
@@ -1787,7 +1795,7 @@ fn run_stage3_sumchecks_blake2b() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e = poly.eval_from_hint(e, rj);
         stage1_polys.push(poly);
         stage1_r_sumcheck.push(rj);
@@ -1945,7 +1953,7 @@ fn run_stage3_sumchecks_blake2b() {
         r1cs_inputs[5],
         r1cs_inputs[22],
     ];
-    let tau_high_pv = Fr::from(t.challenge_u128());
+    let tau_high_pv = t.challenge_scalar_optimized_fr();
     let w_tau = lagrange_evals_symmetric(tau_high_pv, 5);
     let mut pv_input_claim = Fr::zero();
     for k in 0..5 {
@@ -1956,7 +1964,7 @@ fn run_stage3_sumchecks_blake2b() {
     let mut stage2_uniskip_poly_coeffs = vec![Fr::zero(); 13];
     stage2_uniskip_poly_coeffs[0] = c0;
     t.append_scalars_fr(b"uniskip_poly", &stage2_uniskip_poly_coeffs);
-    let stage2_r0 = Fr::from(t.challenge_u128());
+    let stage2_r0 = t.challenge_scalar_optimized_fr();
 
     let stage2_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage2_uniskip_claim);
@@ -1969,7 +1977,7 @@ fn run_stage3_sumchecks_blake2b() {
     let gamma_instr_sqr = gamma_instr.square();
     let mut stage2_r_address: Vec<Fr> = Vec::with_capacity(log_k);
     for _ in 0..log_k {
-        stage2_r_address.push(Fr::from(t.challenge_u128()));
+        stage2_r_address.push(t.challenge_scalar_optimized_fr());
     }
 
     let get = |idx: usize| r1cs_inputs[idx];
@@ -2007,7 +2015,7 @@ fn run_stage3_sumchecks_blake2b() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e2 = poly.eval_from_hint(e2, rj);
         stage2_polys.push(poly);
         stage2_r_sumcheck.push(rj);
@@ -2096,7 +2104,7 @@ fn run_stage3_sumchecks_blake2b() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e3 = poly.eval_from_hint(e3, rj);
         stage3_polys.push(poly);
         stage3_r_sumcheck.push(rj);
@@ -2237,7 +2245,8 @@ fn run_stage4_sumchecks_blake2b_old() {
     // Stage4 registers RW phases
     let regs_rw_phase1 = 1usize;
     let regs_rw_phase2 = 1usize;
-    let regs_log_k = 5usize;
+    // Jolt uses REGISTER_COUNT = RISCV (32) + virtual (96) = 128 => log2 = 7.
+    let regs_log_k = common::constants::REGISTER_COUNT.ilog2() as usize;
     let max_rounds_stage4 = regs_log_k + log_t;
 
     // Memory layout
@@ -2269,12 +2278,12 @@ fn run_stage4_sumchecks_blake2b_old() {
     // ----------------
     let mut tau: Vec<Fr> = Vec::with_capacity(num_rows_bits);
     for _ in 0..num_rows_bits {
-        tau.push(Fr::from(t.challenge_u128()));
+        tau.push(t.challenge_scalar_optimized_fr());
     }
 
     let stage1_uni_poly_coeffs: Vec<Fr> = vec![Fr::zero(); outer_first_round_num_coeffs];
     t.append_scalars_fr(b"uniskip_poly", &stage1_uni_poly_coeffs);
-    let stage1_r0 = Fr::from(t.challenge_u128());
+    let stage1_r0 = t.challenge_scalar_optimized_fr();
 
     let stage1_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage1_uniskip_claim);
@@ -2294,7 +2303,7 @@ fn run_stage4_sumchecks_blake2b_old() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e = poly.eval_from_hint(e, rj);
         stage1_polys.push(poly);
         stage1_r_sumcheck.push(rj);
@@ -2337,7 +2346,7 @@ fn run_stage4_sumchecks_blake2b_old() {
     // Stage2 UnivariateSkip (proof shape only)
     let stage2_uni_poly_coeffs: Vec<Fr> = vec![Fr::zero(); outer_first_round_num_coeffs];
     t.append_scalars_fr(b"uniskip_poly", &stage2_uni_poly_coeffs);
-    let stage2_r0 = Fr::from(t.challenge_u128());
+    let stage2_r0 = t.challenge_scalar_optimized_fr();
 
     let stage2_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage2_uniskip_claim);
@@ -2372,7 +2381,7 @@ fn run_stage4_sumchecks_blake2b_old() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e2 = poly.eval_from_hint(e2, rj);
         stage2_polys.push(poly);
         stage2_r_sumcheck.push(rj);
@@ -2414,7 +2423,7 @@ fn run_stage4_sumchecks_blake2b_old() {
             coeffs_except_linear_term: vec![c0, c2],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e3 = poly.eval_from_hint(e3, rj);
         stage3_polys.push(poly);
         stage3_r_sumcheck.push(rj);
@@ -2500,7 +2509,7 @@ fn run_stage4_sumchecks_blake2b_old() {
             coeffs_except_linear_term: vec![c0, c2, c3],
         };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e4 = poly.eval_from_hint(e4, rj);
         stage4_polys.push(poly);
         stage4_r_sumcheck.push(rj);
@@ -2915,7 +2924,8 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
     // Stage4 parameters
     let regs_rw_phase1 = 1usize;
     let regs_rw_phase2 = 1usize;
-    let regs_log_k = 5usize;
+    // Jolt uses REGISTER_COUNT = RISCV (32) + virtual (96) = 128 => log2 = 7.
+    let regs_log_k = common::constants::REGISTER_COUNT.ilog2() as usize;
     let max_rounds_stage4 = regs_log_k + log_t;
 
     // Memory layout (crafted so OutputSumcheck io_mask range is empty: input_start maps to RAM_START)
@@ -2953,12 +2963,12 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
     // ----------------
     let mut tau: Vec<Fr> = Vec::with_capacity(num_rows_bits);
     for _ in 0..num_rows_bits {
-        tau.push(Fr::from(t.challenge_u128()));
+        tau.push(t.challenge_scalar_optimized_fr());
     }
 
     let stage1_uni_poly_coeffs: Vec<Fr> = vec![Fr::zero(); outer_first_round_num_coeffs];
     t.append_scalars_fr(b"uniskip_poly", &stage1_uni_poly_coeffs);
-    let stage1_r0 = Fr::from(t.challenge_u128());
+    let stage1_r0 = t.challenge_scalar_optimized_fr();
 
     let stage1_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage1_uniskip_claim);
@@ -2976,7 +2986,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
         let c3 = Fr::from((3000 + j) as u64);
         let poly = CompressedUniPolyFr { coeffs_except_linear_term: vec![c0, c2, c3] };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e1 = poly.eval_from_hint(e1, rj);
         stage1_polys.push(poly);
         stage1_r_sumcheck.push(rj);
@@ -3006,7 +3016,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
     // Stage 2a: product virtualization uni-skip
     // ----------------
     let base_evals = [r1cs_inputs[2], r1cs_inputs[3], r1cs_inputs[4], r1cs_inputs[5], r1cs_inputs[22]];
-    let tau_high_pv = Fr::from(t.challenge_u128());
+    let tau_high_pv = t.challenge_scalar_optimized_fr();
     let w_tau = lagrange_evals_symmetric(tau_high_pv, 5);
     let mut pv_input_claim = Fr::zero();
     for k in 0..5 {
@@ -3017,7 +3027,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
     let mut stage2_uniskip_poly_coeffs = vec![Fr::zero(); 13];
     stage2_uniskip_poly_coeffs[0] = c0;
     t.append_scalars_fr(b"uniskip_poly", &stage2_uniskip_poly_coeffs);
-    let stage2_r0 = Fr::from(t.challenge_u128());
+    let stage2_r0 = t.challenge_scalar_optimized_fr();
 
     let stage2_uniskip_claim = Fr::zero();
     t.append_scalar_fr(b"opening_claim", stage2_uniskip_claim);
@@ -3030,7 +3040,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
     let gamma_instr_sqr = gamma_instr.square();
     let mut stage2_r_address: Vec<Fr> = Vec::with_capacity(log_k);
     for _ in 0..log_k {
-        stage2_r_address.push(Fr::from(t.challenge_u128()));
+        stage2_r_address.push(t.challenge_scalar_optimized_fr());
     }
 
     let get = |idx: usize| r1cs_inputs[idx];
@@ -3066,7 +3076,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
         let c3 = Fr::from((6000 + j) as u64);
         let poly = CompressedUniPolyFr { coeffs_except_linear_term: vec![c0, c2, c3] };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e2 = poly.eval_from_hint(e2, rj);
         stage2_polys.push(poly);
         stage2_r_sumcheck.push(rj);
@@ -3244,7 +3254,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
         let c3 = Fr::from((9000 + j) as u64);
         let poly = CompressedUniPolyFr { coeffs_except_linear_term: vec![c0, c2, c3] };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e3 = poly.eval_from_hint(e3, rj);
         stage3_polys.push(poly);
         stage3_r_sumcheck.push(rj);
@@ -3342,7 +3352,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
         let c3 = Fr::from((14000 + j) as u64);
         let poly = CompressedUniPolyFr { coeffs_except_linear_term: vec![c0, c2, c3] };
         t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-        let rj = Fr::from(t.challenge_u128());
+        let rj = t.challenge_scalar_optimized_fr();
         e4 = poly.eval_from_hint(e4, rj);
         stage4_polys.push(poly);
         stage4_r_sumcheck.push(rj);
@@ -3437,7 +3447,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
                 coeffs_except_linear_term: vec![c0, c2, c3],
             };
             t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-            let rj = Fr::from(t.challenge_u128());
+            let rj = t.challenge_scalar_optimized_fr();
             e5 = poly.eval_from_hint(e5, rj);
             stage5_polys.push(poly);
             stage5_r_sumcheck.push(rj);
@@ -3677,8 +3687,9 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
         let stage6_bcr_stage4_gammas = t.challenge_scalar_powers_fr(3);
         let stage6_bcr_stage5_gammas = t.challenge_scalar_powers_fr(2 + 41); // 2 + len(LOOKUP_TABLES_64)
 
-        // Booleanity samples optimized gamma (u128->Fr). (We force nonzero like Python, but keep output terms zero.)
-        let mut _stage6_bool_gamma = Fr::from(t.challenge_u128());
+        // Booleanity samples optimized gamma (u128 -> MontU128Challenge<Fr> -> Fr).
+        // (We force nonzero like Python, but keep output terms zero.)
+        let mut _stage6_bool_gamma = t.challenge_scalar_optimized_fr();
         if _stage6_bool_gamma == Fr::zero() {
             _stage6_bool_gamma = Fr::one();
         }
@@ -3850,7 +3861,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
                 coeffs_except_linear_term: vec![c0, c2, c3],
             };
             t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-            let rj = Fr::from(t.challenge_u128());
+            let rj = t.challenge_scalar_optimized_fr();
             e6 = poly.eval_from_hint(e6, rj);
             stage6_polys.push(poly);
             stage6_r_sumcheck.push(rj);
@@ -4062,7 +4073,7 @@ fn run_stage4_sumchecks_blake2b_inner(run_stage5: bool, run_stage6: bool, run_st
                 let c2 = Fr::from((22000 + j) as u64);
                 let poly = CompressedUniPolyFr { coeffs_except_linear_term: vec![c0, c2] };
                 t.append_scalars_fr(b"sumcheck_poly", &poly.coeffs_except_linear_term);
-                let rj = Fr::from(t.challenge_u128());
+                let rj = t.challenge_scalar_optimized_fr();
                 e7 = poly.eval_from_hint(e7, rj);
                 stage7_polys.push(poly);
                 stage7_r_sumcheck.push(rj);

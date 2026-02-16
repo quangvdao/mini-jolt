@@ -10,6 +10,7 @@ from openings import CommittedPolynomial, SumcheckId, VerifierOpeningAccumulator
 from polynomials import CompressedUniPoly, UniPoly  # polynomial containers
 from r1cs import ALL_R1CS_INPUTS, UniformSpartanKey  # Spartan key + canonical input order
 from rv64imac.bytecode import BytecodePreprocessing  # Stage 6 bytecode preprocessing
+from rv64imac.constants import REGISTER_COUNT  # Rust register domain (arch + virtual)
 from jolt_verifier import verify_spartan_outer_stage1, verify_stage2, verify_stage3, verify_stage4, verify_stage5, verify_stage6  # stage orchestration
 from sumchecks import SumcheckInstanceProof, UniSkipFirstRoundProof  # proof containers
 from tests.oracle import run_rust_oracle  # rust oracle harness
@@ -235,7 +236,7 @@ class Stage6SumchecksCrossLangTests(unittest.TestCase):  # Python↔Rust parity:
         acc.set_committed_claim(CommittedPolynomial.RamInc, SumcheckId.RamValFinalEvaluation, Fr(int(kv["stage4_val_final_inc_claim"])))
         acc.set_virtual_claim(VirtualPolynomial.RamRa, SumcheckId.RamValFinalEvaluation, Fr(int(kv["stage4_val_final_wa_claim"])))
 
-        stage4_num_rounds = 5 + (trace_len.bit_length() - 1)
+        stage4_num_rounds = (REGISTER_COUNT.bit_length() - 1) + (trace_len.bit_length() - 1)
         stage4_polys = []
         for j in range(stage4_num_rounds):
             stage4_polys.append(CompressedUniPoly(_csv_fr(kv[f"stage4_sumcheck_poly_{j}"])))
