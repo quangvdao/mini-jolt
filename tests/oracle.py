@@ -3,19 +3,32 @@ import shutil  # find cargo
 import subprocess  # run rust oracle
 import textwrap  # nice error messages
 import unittest  # SkipTest
+import os  # env vars
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]  # repo-local mini-jolt/
-ORACLE_MANIFEST = ROOT / "tests" / "rust_oracle" / "Cargo.toml"  # optional rust oracle manifest
+DEFAULT_ORACLE_MANIFEST = ROOT / "tests" / "rust_oracle" / "Cargo.toml"  # optional rust oracle manifest
+
+
+def _oracle_manifest_path() -> pathlib.Path:
+    p = DEFAULT_ORACLE_MANIFEST
+    env = os.environ.get("MINI_JOLT_RUST_ORACLE_MANIFEST")
+    if env:
+        p = pathlib.Path(env).expanduser()
+    return p
 
 
 def run_rust_oracle(mode, stdin_text):  # Run `tests/rust_oracle` with given mode.
-    if not ORACLE_MANIFEST.exists():
-        raise unittest.SkipTest("rust oracle not present (tests/rust_oracle).")
+    oracle_manifest = _oracle_manifest_path()
+    if not oracle_manifest.exists():
+        raise unittest.SkipTest(
+            "rust oracle not present. Either vendor it at `tests/rust_oracle/` "
+            "or set `MINI_JOLT_RUST_ORACLE_MANIFEST=/path/to/rust_oracle/Cargo.toml`."
+        )
     if shutil.which("cargo") is None:
         raise unittest.SkipTest("cargo not found; skipping rust oracle tests.")
     p = subprocess.run(
-        ["cargo", "run", "--quiet", "--manifest-path", str(ORACLE_MANIFEST), "--", mode],
+        ["cargo", "run", "--quiet", "--manifest-path", str(oracle_manifest), "--", mode],
         input=stdin_text,
         text=True,
         capture_output=True,
